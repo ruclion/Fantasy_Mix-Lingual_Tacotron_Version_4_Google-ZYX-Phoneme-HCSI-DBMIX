@@ -8,8 +8,10 @@ from datasets import ljspeech
 from datasets import databaker
 from datasets import thcoss
 from datasets import Huawei
-from datasets import chunchun_CN
 from datasets import chunchun_EN
+from datasets import chunchun_CN
+from datasets import DBMIX_EN
+from datasets import DBMIX_CN
 
 def write_metadata(metadata, out_dir):
 	with open(os.path.join(out_dir, 'train.txt'), 'w', encoding='utf-8') as f:
@@ -32,7 +34,7 @@ def main():
 	parser.add_argument('--base_dir', default='')
 	parser.add_argument('--hparams', default='',
 		help='Hyperparameter overrides as a comma-separated list of name=value pairs')
-	parser.add_argument('--dataset', default='chunchun')
+	parser.add_argument('--dataset', default='DBMIX')
 	parser.add_argument('--output', default='training_data')
 	parser.add_argument('--n_jobs', type=int, default=cpu_count())
 	args = parser.parse_args()
@@ -40,7 +42,7 @@ def main():
 	modified_hp = hparams.parse(args.hparams)
 	
 	# Prepare directories
-	in_dir  = os.path.join(args.base_dir, args.dataset)
+	# in_dir  = os.path.join(args.base_dir, args.dataset)
 	out_dir = os.path.join(args.base_dir, args.output)
 	mel_dir = os.path.join(out_dir, 'mels')
 	wav_dir = os.path.join(out_dir, 'audio')
@@ -51,7 +53,22 @@ def main():
 	
 	# Process dataset
 	metadata = []
-	if args.dataset == 'chunchun':
+	if args.dataset == 'DBMIX':
+		use_prosody_CN = True
+
+		in_dir = '/ceph/home/hujk17/TTS.DataBaker.zhcmn.enus.F.DB6.emotion/EN'
+		meta_path = '/ceph/home/hujk17/Fantasy_Mix-Lingual_Tacotron_Version_4_Google-ZYX-Phoneme-HCSI-DBMIX/G2P_EN_Kb/databaker_MIX_Phoneme/DBMIX_EN_meta_symbol_split.csv.txt'
+		print('processing DBMIX EN.../n')
+		metadata_1 = DBMIX_EN.build_from_path(modified_hp, 0, 0, in_dir, meta_path, mel_dir, lin_dir, wav_dir, args.n_jobs, tqdm=tqdm)
+
+		in_dir = '/ceph/home/hujk17/TTS.DataBaker.zhcmn.enus.F.DB6.emotion/CN'
+		meta_path = '/ceph/home/hujk17/Fantasy_Mix-Lingual_Tacotron_Version_4_Google-ZYX-Phoneme-HCSI-DBMIX/G2P_CN_HCSI/databaker_MIX_Phoneme/DBMIX_CN_metaProsody_symbol_split.csv.txt'
+		print('processing DBMIX CN.../n')
+		metadata_2 = DBMIX_CN.build_from_path_CN(modified_hp, 0, 1, in_dir, meta_path, use_prosody_CN, mel_dir, lin_dir, wav_dir, args.n_jobs,tqdm=tqdm)
+		print('finished here')
+		metadata = metadata_1 + metadata_2
+		
+	elif args.dataset == 'chunchun':
 		use_prosody = True
 
 		in_dir = os.path.join(args.base_dir, 'chunchun/english/chunchun_english_lj')

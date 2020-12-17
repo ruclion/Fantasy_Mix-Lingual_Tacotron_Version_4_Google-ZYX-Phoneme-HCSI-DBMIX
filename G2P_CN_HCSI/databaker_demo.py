@@ -37,6 +37,28 @@ def main():
     print('tag:', finished)
     print('0:', '|'.join(meta_symbol[0]))
 
+
+    meta_symbol_Prosody = []
+    for x in meta_symbol:
+        # ['009937', 'uo_3_uei_4_ _n_an_2_zh_u_3_j_ve_2_ _/_ _g_an_3_d_ao_4_ _iou_6_d_ian_3_ _i_2_h_an_4_.']
+        basename = x[0]
+        pinyin = x[1].split('_') 
+        l = []
+        pinyin_len = len(pinyin)
+        for i, ch in enumerate(pinyin):
+            l.append(ch)
+            # 下面情况需要补充10, 首先是不能是tone
+            if ch.isdigit() is False:
+                # 是末尾要补充, 后面一个不是tone要补充
+                if i == pinyin_len - 1 or pinyin[i + 1].isdigit() is False:
+                    l.append('10')
+        
+        meta_symbol_Prosody.append([basename, '_'.join(l)])
+
+    finished = write_metadata(meta_symbol_Prosody, out_dir, 'DBMIX_CN_metaProsody_symbol_split.csv.txt')
+    print('tag:', finished)
+    print('0:', '|'.join(meta_symbol[0]))
+
     # 需要再来个声调embedding到声韵母上的
 
     # ans1 = g2p_2.pinyin_to_symbols('ma1 ma1 dang1 shi2 biao3 shi4 er2 zi5 kai1 xin1 de5 xiang4 huar1 yi2 yang4')

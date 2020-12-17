@@ -2,6 +2,11 @@ import re
 
 from . import cleaners
 from .symbols import symbols
+from .symbols import symbols_tag
+
+
+assert symbols_tag == 'MIX_Phoneme_Version'
+
 
 # Mappings from symbol to numeric ID and vice versa:
 _symbol_to_id = {s: i for i, s in enumerate(symbols)}
@@ -39,6 +44,41 @@ def text_to_sequence(text, cleaner_names):
   # Append EOS token
   sequence.append(_symbol_to_id['~'])
   return sequence
+
+
+def text_to_sequence_MIX_Phoneme_Version(text, cleaner_names):
+  '''Converts a string of text to a sequence of IDs corresponding to the symbols in the text.
+
+    The text can optionally have ARPAbet sequences enclosed in curly braces embedded
+    in it. For example, "Turn left on {HH AW1 S S T AH0 N} Street."
+
+    Args:
+      text: string to convert to a sequence
+      cleaner_names: names of the cleaner functions to run the text through
+
+    Returns:
+      List of integers corresponding to the symbols in the text
+  '''
+  assert len(cleaner_names) == 1 and cleaner_names[0] == 'MIX_Phoneme_cleaners'
+
+  # uo_3_ _10_sh_10_en_1_sh_10_ang_4_ _10_f_10_en_1_uen_2_ _10_m_10_ei_2_iou_3_._10
+  sequence_id_suffix = text.split('_')
+  sequence_txt = []
+  digital_tone_stress = []
+  # 拆分为两个数字List
+  for i, ch in enumerate(sequence_id_suffix):
+    if i % 2 == 0:
+      sequence_txt.append(_symbol_to_id[ch])
+    else:
+      assert ch.isdigit() is True
+      digital_tone_stress.append(int(ch))
+
+  # Append EOS token
+  sequence_txt.append(_symbol_to_id['~'])
+  digital_tone_stress.append(digital_tone_stress[-1])
+
+  assert len(sequence_txt) == len(digital_tone_stress)
+  return (sequence_txt, digital_tone_stress)
 
 
 def sequence_to_text(sequence):

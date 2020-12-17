@@ -55,12 +55,16 @@ def main():
 	parser.add_argument('--GTA', default='True', help='Ground truth aligned synthesis, defaults to True, only considered in Tacotron synthesis mode')
 	parser.add_argument('--restore', type=bool, default=True, help='Set this to False to do a fresh training')
 	parser.add_argument('--summary_interval', type=int, default=250,
+	# parser.add_argument('--summary_interval', type=int, default=2,
 		help='Steps between running summary ops')
-	parser.add_argument('--embedding_interval', type=int, default=10000,
+	parser.add_argument('--embedding_interval', type=int, default=2500,
+	# parser.add_argument('--embedding_interval', type=int, default=3,
 		help='Steps between updating embeddings projection visualization')
-	parser.add_argument('--checkpoint_interval', type=int, default=5000,
+	parser.add_argument('--checkpoint_interval', type=int, default=2500,
+	# parser.add_argument('--checkpoint_interval', type=int, default=4,
 		help='Steps between writing checkpoints')
-	parser.add_argument('--eval_interval', type=int, default=10000,
+	# parser.add_argument('--eval_interval', type=int, default=5,
+	parser.add_argument('--eval_interval', type=int, default=2500,
 		help='Steps between eval on test data')
 	parser.add_argument('--tacotron_train_steps', type=int, default=150000, help='total number of tacotron training steps')
 	parser.add_argument('--wavenet_train_steps', type=int, default=750000, help='total number of wavenet training steps')

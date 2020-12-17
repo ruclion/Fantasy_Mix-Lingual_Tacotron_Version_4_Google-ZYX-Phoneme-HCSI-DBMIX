@@ -7,7 +7,7 @@ hparams = tf.contrib.training.HParams(
 	# text, you may want to use "basic_cleaners" or "transliteration_cleaners".
 	#cleaners_cn='transliteration_cleaners',
 	#cleaners_en='english_cleaners',
-	cleaners='transliteration_cleaners',
+	cleaners='MIX_Phoneme_cleaners',
 	#If you only have 1 GPU or want to use only one GPU, please set num_gpus=0 and specify the GPU idx on run. example:
 		#expample 1 GPU of index 2 (train on "/gpu2" only): CUDA_VISIBLE_DEVICES=2 python train.py --model='Tacotron' --hparams='tacotron_gpu_start_idx=2'
 	#If you want to train on multiple GPUs, simply specify the number of GPUs available, and the idx of the first GPU to use. example:
@@ -116,7 +116,8 @@ hparams = tf.contrib.training.HParams(
 	outputs_per_step = 3, #number of frames to generate at each decoding step (increase to speed up computation and allows for higher batch size, decreases G&L audio quality)
 	stop_at_any = True, #Determines whether the decoder should stop when predicting <stop> to any frame or to all of them (True works pretty well)
 
-	embedding_dim = 512, #dimension of embedding space
+	phoneme_embedding_dim = 512, #dimension of phoenem embedding space
+	tone_stress_embedding_dim = 16, #dimension of tone and stress embedding space
 
 	#Encoder parameters
 	enc_conv_num_layers = 3, #number of encoder convolutional layers

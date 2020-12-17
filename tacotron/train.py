@@ -13,7 +13,7 @@ from hparams import hparams_debug_string
 from tacotron.feeder import Feeder
 from tacotron.models import create_model
 from tacotron.utils import ValueWindow, plot
-from tacotron.utils.text import sequence_to_text
+# from tacotron.utils.text import sequence_to_text
 from tacotron.utils.symbols import symbols
 from tqdm import tqdm
 
@@ -82,10 +82,10 @@ def model_train_mode(args, feeder, hparams, global_step):
 			model_name = 'Tacotron'
 		model = create_model(model_name or args.model, hparams)
 		if hparams.predict_linear:
-			model.initialize(feeder.inputs, feeder.speaker_labels, feeder.language_labels, feeder.input_lengths, feeder.mel_targets, feeder.token_targets, linear_targets=feeder.linear_targets,
+			model.initialize(feeder.inputs, feeder.inputs_tone_stress, feeder.speaker_labels, feeder.language_labels, feeder.input_lengths, feeder.mel_targets, feeder.token_targets, linear_targets=feeder.linear_targets,
 				targets_lengths=feeder.targets_lengths, global_step=global_step, is_training=True, split_infos=feeder.split_infos)
 		else:
-			model.initialize(feeder.inputs, feeder.speaker_labels, feeder.language_labels, feeder.input_lengths, feeder.mel_targets, feeder.token_targets,
+			model.initialize(feeder.inputs, feeder.inputs_tone_stress, feeder.speaker_labels, feeder.language_labels, feeder.input_lengths, feeder.mel_targets, feeder.token_targets,
 				targets_lengths=feeder.targets_lengths, global_step=global_step, is_training=True, split_infos=feeder.split_infos)
 		model.add_loss()
 		model.add_optimizer(global_step)
@@ -99,11 +99,11 @@ def model_test_mode(args, feeder, hparams, global_step):
 			model_name = 'Tacotron'
 		model = create_model(model_name or args.model, hparams)
 		if hparams.predict_linear:
-			model.initialize(feeder.eval_inputs, feeder.eval_speaker_labels, feeder.eval_language_labels, feeder.eval_input_lengths, feeder.eval_mel_targets, feeder.eval_token_targets,
+			model.initialize(feeder.eval_inputs, feeder.eval_inputs_tone_stress, feeder.eval_speaker_labels, feeder.eval_language_labels, feeder.eval_input_lengths, feeder.eval_mel_targets, feeder.eval_token_targets,
 				linear_targets=feeder.eval_linear_targets, targets_lengths=feeder.eval_targets_lengths, global_step=global_step,
 				is_training=False, is_evaluating=True, split_infos=feeder.eval_split_infos)
 		else:
-			model.initialize(feeder.eval_inputs, feeder.eval_speaker_labels, feeder.eval_language_labels, feeder.eval_input_lengths, feeder.eval_mel_targets, feeder.eval_token_targets,
+			model.initialize(feeder.eval_inputs, feeder.eval_inputs_tone_stress, feeder.eval_speaker_labels, feeder.eval_language_labels, feeder.eval_input_lengths, feeder.eval_mel_targets, feeder.eval_token_targets,
 				targets_lengths=feeder.eval_targets_lengths, global_step=global_step, is_training=False, is_evaluating=True, 
 				split_infos=feeder.eval_split_infos)
 		model.add_loss()
@@ -213,6 +213,11 @@ def train(log_dir, args, hparams):
 			while not coord.should_stop() and step < args.tacotron_train_steps:
 				start_time = time.time()
 				step, loss, opt, D_mean, D_var = sess.run([global_step, model.loss, model.optimize, model.D_mean, model.D_var])
+				# inputs_printout, inputs_tone_stress_printout, step, loss, opt, D_mean, D_var = sess.run([model.inputs_printout, model.inputs_tone_stress_printout, global_step, model.loss, model.optimize, model.D_mean, model.D_var])
+				# print('\n\n\n\n\n')
+				# print(inputs_printout)
+				# print('\n\n\n\n\n')
+				# print(inputs_tone_stress_printout)
 				time_window.append(time.time() - start_time)
 				loss_window.append(loss)
 				message = 'Step {:7d} [{:.3f} sec/step, loss={:.5f}, avg_loss={:.5f}]'.format(
@@ -301,8 +306,9 @@ def train(log_dir, args, hparams):
 
 					log('\nSaving alignment, Mel-Spectrograms and griffin-lim inverted waveform..')
 					if hparams.predict_linear:
-						input_seq, mel_prediction, linear_prediction, alignment, target, target_length, linear_target = sess.run([
+						input_seq, input_tone_stress_seq, mel_prediction, linear_prediction, alignment, target, target_length, linear_target = sess.run([
 							model.tower_inputs[0][0],
+							model.tower_inputs_tone_stress[0][0],
 							model.tower_mel_outputs[0][0],
 							model.tower_linear_outputs[0][0],
 							model.tower_alignments[0][0],
@@ -325,8 +331,9 @@ def train(log_dir, args, hparams):
 							max_len=target_length, auto_aspect=True)
 
 					else:
-						input_seq, mel_prediction, alignment, target, target_length = sess.run([
+						input_seq, input_tone_stress_seq, mel_prediction, alignment, target, target_length = sess.run([
 							model.tower_inputs[0][0],
+							model.tower_inputs_tone_stress[0][0],
 							model.tower_mel_outputs[0][0],
 							model.tower_alignments[0][0],
 							model.tower_mel_targets[0][0],
@@ -349,7 +356,8 @@ def train(log_dir, args, hparams):
 					plot.plot_spectrogram(mel_prediction, os.path.join(plot_dir, 'step-{}-mel-spectrogram.png'.format(step)),
 						title='{}, {}, step={}, loss={:.5f}'.format(args.model, time_string(), step, loss), target_spectrogram=target,
 						max_len=target_length)
-					log('Input at step {}: {}'.format(step, sequence_to_text(input_seq)))
+					# log('Input at step {}: {}'.format(step, sequence_to_text(input_seq)))
+					# log('Input at step {}: {}'.format(step, ' '.join(input_seq))
 
 				if step % args.embedding_interval == 0 or step == args.tacotron_train_steps or step == 1:
 					#Get current checkpoint state
@@ -358,7 +366,7 @@ def train(log_dir, args, hparams):
 
 					#Update Projector
 					log('\nSaving Model Character Embeddings visualization..')
-					add_embedding_stats(summary_writer, [model.embedding_table.name], [char_embedding_meta], checkpoint_state.model_checkpoint_path)
+					add_embedding_stats(summary_writer, [model.phoneme_embedding_table.name], [char_embedding_meta], checkpoint_state.model_checkpoint_path)
 					log('Tacotron Character embeddings have been updated on tensorboard!')
 
 			log('Tacotron training complete after {} global steps!'.format(args.tacotron_train_steps), slack=True)

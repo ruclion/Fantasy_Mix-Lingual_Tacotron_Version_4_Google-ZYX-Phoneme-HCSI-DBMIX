@@ -1,5 +1,7 @@
 import tensorflow as tf 
 from tacotron.utils.symbols import symbols
+from tacotron.utils.symbols import tone_stress_symbols_max_no
+from tacotron.utils.symbols import symbols_tag
 from infolog import log
 from tacotron.models.helpers import TacoTrainingHelper, TacoTestHelper
 from tacotron.models.modules import *
@@ -9,6 +11,8 @@ from tacotron.models.custom_decoder import CustomDecoder
 from tacotron.models.attention import LocationSensitiveAttention
 
 import numpy as np
+
+assert symbols_tag == 'MIX_Phoneme_Version'
 
 def split_func(x, split_pos):
 	rst = []
@@ -25,7 +29,7 @@ class Tacotron():
 	def __init__(self, hparams):
 		self._hparams = hparams
 
-	def initialize(self, inputs, speaker_labels, language_labels, input_lengths, mel_targets=None, stop_token_targets=None, linear_targets=None, targets_lengths=None, gta=False,
+	def initialize(self, inputs, inputs_tone_stress, speaker_labels, language_labels, input_lengths, mel_targets=None, stop_token_targets=None, linear_targets=None, targets_lengths=None, gta=False,
 			global_step=None, is_training=False, is_evaluating=False, split_infos=None):
 		"""
 		Initializes the model for inference
@@ -54,6 +58,9 @@ class Tacotron():
 		if is_training and is_evaluating:
 			raise RuntimeError('Model can not be in training and evaluation modes at the same time!')
 
+		# self.inputs_printout = inputs
+		# self.inputs_tone_stress_printout = inputs_tone_stress
+
 		split_device = '/cpu:0' if self._hparams.tacotron_num_gpus > 1 or self._hparams.split_on_cpu else '/gpu:{}'.format(self._hparams.tacotron_gpu_start_idx)
 		with tf.device(split_device):
 			hp = self._hparams
@@ -66,11 +73,13 @@ class Tacotron():
 			tower_language_labels = tf.split(language_labels, num_or_size_splits=hp.tacotron_num_gpus, axis=0)
 
 			p_inputs = tf.py_func(split_func, [inputs, split_infos[:, 0]], lout_int)
+			p_inputs_tone_stress = tf.py_func(split_func, [inputs_tone_stress, split_infos[:, 0]], lout_int)
 			p_mel_targets = tf.py_func(split_func, [mel_targets, split_infos[:,1]], lout_float) if mel_targets is not None else mel_targets
 			p_stop_token_targets = tf.py_func(split_func, [stop_token_targets, split_infos[:,2]], lout_float) if stop_token_targets is not None else stop_token_targets
 			p_linear_targets = tf.py_func(split_func, [linear_targets, split_infos[:, 3]], lout_float) if linear_targets is not None else linear_targets
 
 			tower_inputs = []
+			tower_inputs_tone_stress = []
 			tower_mel_targets = []
 			tower_stop_token_targets = []
 			tower_linear_targets = []
@@ -81,6 +90,7 @@ class Tacotron():
 			linear_channels = hp.num_freq
 			for i in range (hp.tacotron_num_gpus):
 				tower_inputs.append(tf.reshape(p_inputs[i], [batch_size, -1]))
+				tower_inputs_tone_stress.append(tf.reshape(p_inputs_tone_stress[i], [batch_size, -1]))
 				if p_mel_targets is not None:
 					tower_mel_targets.append(tf.reshape(p_mel_targets[i], [batch_size, -1, mel_channels]))
 				if p_stop_token_targets is not None:
@@ -95,7 +105,10 @@ class Tacotron():
 		self.tower_linear_outputs = []
 		self.tower_predict_speaker_labels = []
 
-		tower_embedded_inputs = []
+		# 添加分别的phoneme embedding和 声调重读embedding 和 concat的inputs embedding
+		tower_embedded_inputs_phoneme = []
+		tower_embedded_inputs_tone_stress = []
+		tower_embedded_inputs_concat = []
 		tower_enc_conv_output_shape = []
 		tower_encoder_outputs = []
 		tower_residual = []
@@ -113,10 +126,24 @@ class Tacotron():
 					#GTA is only used for predicting mels to train Wavenet vocoder, so we ommit post processing when doing GTA synthesis
 					post_condition = hp.predict_linear and not gta
 
-					# Embeddings ==> [batch_size, sequence_length, embedding_dim]
-					self.embedding_table = tf.get_variable(
-						'inputs_embedding', [len(symbols), hp.embedding_dim], dtype=tf.float32)
-					embedded_inputs = tf.nn.embedding_lookup(self.embedding_table, tower_inputs[i])
+					# tf.print(tower_inputs[i])
+					# tf.print(tower_inputs[i])
+
+					# phoneme Embeddings ==> [batch_size, sequence_length, embedding_dim], 512
+					self.phoneme_embedding_table = tf.get_variable(
+						'inputs_phoneme_embedding', [len(symbols), hp.phoneme_embedding_dim], dtype=tf.float32)
+					embedded_inputs_phoneme = tf.nn.embedding_lookup(self.phoneme_embedding_table, tower_inputs[i])
+
+					# tone and stress Embeddings ==> [batch_size, sequence_length, embedding_dim], 16
+					self.tone_stress_embedding_table = tf.get_variable(
+						'inputs_tone_stress_embedding', [tone_stress_symbols_max_no, hp.tone_stress_embedding_dim], dtype=tf.float32)
+					embedded_inputs_tone_stress = tf.nn.embedding_lookup(self.tone_stress_embedding_table, tower_inputs_tone_stress[i])
+
+					# 拼接, 512 + 16
+					embedded_inputs_concat = tf.concat([embedded_inputs_phoneme, embedded_inputs_tone_stress], axis=-1)
+
+
+
 					self.speaker_embedding_table = tf.get_variable(
 						'speaker_embedding', [hp.speaker_num, hp.speaker_dim], dtype=tf.float32)
 					embedded_speaker_label = tf.nn.embedding_lookup(self.speaker_embedding_table, tower_speaker_labels[i])
@@ -130,7 +157,7 @@ class Tacotron():
 						EncoderRNN(is_training, size=hp.encoder_lstm_units,
 							zoneout=hp.tacotron_zoneout_rate, scope='encoder_LSTM'))
 
-					encoder_outputs = encoder_cell(embedded_inputs, tower_input_lengths[i])
+					encoder_outputs = encoder_cell(embedded_inputs_concat, tower_input_lengths[i])
 
 					#For shape visualization purpose
 					enc_conv_output_shape = encoder_cell.conv_output_shape
@@ -246,7 +273,9 @@ class Tacotron():
 					self.tower_stop_token_prediction.append(stop_token_prediction)
 					self.tower_mel_outputs.append(mel_outputs)
 					self.tower_predict_speaker_labels.append(predict_speaker_labels)
-					tower_embedded_inputs.append(embedded_inputs)
+					tower_embedded_inputs_phoneme.append(embedded_inputs_phoneme)
+					tower_embedded_inputs_tone_stress.append(embedded_inputs_tone_stress)
+					tower_embedded_inputs_concat.append(embedded_inputs_concat)
 					tower_enc_conv_output_shape.append(enc_conv_output_shape)
 					tower_encoder_outputs.append(encoder_outputs)
 					tower_residual.append(residual)
@@ -261,6 +290,7 @@ class Tacotron():
 		if is_training:
 			self.ratio = self.helper._ratio
 		self.tower_inputs = tower_inputs
+		self.tower_inputs_tone_stress = tower_inputs_tone_stress
 		self.tower_input_lengths = tower_input_lengths
 		self.tower_mel_targets = tower_mel_targets
 		self.tower_linear_targets = tower_linear_targets
@@ -278,7 +308,9 @@ class Tacotron():
 		log('  Input:                    {}'.format(inputs.shape))
 		for i in range(hp.tacotron_num_gpus+hp.tacotron_gpu_start_idx):
 			log('  device:                   {}'.format(i))
-			log('  embedding:                {}'.format(tower_embedded_inputs[i].shape))
+			log('  phoneme embedding:        {}'.format(tower_embedded_inputs_phoneme[i].shape))
+			log('  tone stress embedding:    {}'.format(tower_embedded_inputs_tone_stress[i].shape))
+			log('  concat embedding:         {}'.format(tower_embedded_inputs_concat[i].shape))
 			log('  enc conv out:             {}'.format(tower_enc_conv_output_shape[i]))
 			log('  encoder out:              {}'.format(tower_encoder_outputs[i].shape))
 			log('  decoder out:              {}'.format(self.tower_decoder_output[i].shape))

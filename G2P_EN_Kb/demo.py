@@ -69,12 +69,14 @@ def _parse_en_prosody_label(id_text, phoneme_hcsi, use_prosody=False):
     out = g2p(text)
     mix_out = []
     # 将数字分出来
+    # 辅音用11占位, 韵律符号也用11占位
     for x in out:
         if x[-1].isdigit():
             mix_out.append(x[0:-1])
-            mix_out.append(x[-1])
+            mix_out.append(str(int(x[-1]) + 7))
         else:
             mix_out.append(x)
+            mix_out.append('11')
     print(mix_out)
     # 空格替换为*
     for i, x in enumerate(mix_out):

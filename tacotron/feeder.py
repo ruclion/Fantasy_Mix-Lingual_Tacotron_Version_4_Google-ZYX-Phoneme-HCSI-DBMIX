@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 from infolog import log
 from sklearn.model_selection import train_test_split
-from tacotron.utils.text import text_to_sequence
+from tacotron.utils.text import text_to_sequence_MIX_Phoneme_Version
 
 _batches_per_group = 64
 
@@ -27,7 +27,7 @@ class Feeder:
 		# Load metadata
 		self._mel_dir = os.path.join(os.path.dirname(metadata_filename), 'mels')
 		self._linear_dir = os.path.join(os.path.dirname(metadata_filename), 'linear')
-		with open(metadata_filename, encoding='utf-8') as f:
+		with open(metadata_filename, encoding='utf-8-sig') as f:
 			self._metadata = [line.strip().split('|') for line in f]
 			frame_shift_ms = hparams.hop_size / hparams.sample_rate
 			hours = sum([int(x[4]) for x in self._metadata]) * frame_shift_ms / (3600)
@@ -59,6 +59,8 @@ class Feeder:
 
 		#pad input sequences with the <pad_token> 0 ( _ )
 		self._pad = 0
+		# tone_stress的填补是最后一个字符
+
 		#explicitely setting the padding to a value that doesn't originally exist in the spectogram
 		#to avoid any possible conflicts, without affecting the output range of the model too much
 		if hparams.symmetric_mels:
@@ -73,6 +75,7 @@ class Feeder:
 			# to be able to feed different batch sizes at eval time.
 			self._placeholders = [
 			tf.placeholder(tf.int32, shape=(None, None), name='inputs'),
+			tf.placeholder(tf.int32, shape=(None, None), name='inputs_tone_stress'),
 			tf.placeholder(tf.int32, shape=(None, ), name='speaker_labels'),
 			tf.placeholder(tf.int32, shape=(None, ), name='language_labels'),
 			tf.placeholder(tf.int32, shape=(None, ), name='input_lengths'),
@@ -84,36 +87,38 @@ class Feeder:
 			]
 
 			# Create queue for buffering data
-			queue = tf.FIFOQueue(8, [tf.int32, tf.int32, tf.int32, tf.int32, tf.float32, tf.float32, tf.float32, tf.int32, tf.int32], name='input_queue')
+			queue = tf.FIFOQueue(8, [tf.int32, tf.int32, tf.int32, tf.int32, tf.int32, tf.float32, tf.float32, tf.float32, tf.int32, tf.int32], name='input_queue')
 			self._enqueue_op = queue.enqueue(self._placeholders)
-			self.inputs, self.speaker_labels, self.language_labels, self.input_lengths, self.mel_targets, self.token_targets, self.linear_targets, self.targets_lengths, self.split_infos = queue.dequeue()
+			self.inputs, self.inputs_tone_stress, self.speaker_labels, self.language_labels, self.input_lengths, self.mel_targets, self.token_targets, self.linear_targets, self.targets_lengths, self.split_infos = queue.dequeue()
 
 			self.inputs.set_shape(self._placeholders[0].shape)
-			self.speaker_labels.set_shape(self._placeholders[1].shape)
-			self.language_labels.set_shape(self._placeholders[2].shape)
-			self.input_lengths.set_shape(self._placeholders[3].shape)
-			self.mel_targets.set_shape(self._placeholders[4].shape)
-			self.token_targets.set_shape(self._placeholders[5].shape)
-			self.linear_targets.set_shape(self._placeholders[6].shape)
-			self.targets_lengths.set_shape(self._placeholders[7].shape)
-			self.split_infos.set_shape(self._placeholders[8].shape)
+			self.inputs_tone_stress.set_shape(self._placeholders[1].shape)
+			self.speaker_labels.set_shape(self._placeholders[2].shape)
+			self.language_labels.set_shape(self._placeholders[3].shape)
+			self.input_lengths.set_shape(self._placeholders[4].shape)
+			self.mel_targets.set_shape(self._placeholders[5].shape)
+			self.token_targets.set_shape(self._placeholders[6].shape)
+			self.linear_targets.set_shape(self._placeholders[7].shape)
+			self.targets_lengths.set_shape(self._placeholders[8].shape)
+			self.split_infos.set_shape(self._placeholders[9].shape)
 
 
 			# Create eval queue for buffering eval data
-			eval_queue = tf.FIFOQueue(1, [tf.int32, tf.int32, tf.int32, tf.int32, tf.float32, tf.float32, tf.float32, tf.int32, tf.int32], name='eval_queue')
+			eval_queue = tf.FIFOQueue(1, [tf.int32, tf.int32, tf.int32, tf.int32, tf.int32, tf.float32, tf.float32, tf.float32, tf.int32, tf.int32], name='eval_queue')
 			self._eval_enqueue_op = eval_queue.enqueue(self._placeholders)
-			self.eval_inputs, self.eval_speaker_labels, self.eval_language_labels, self.eval_input_lengths, self.eval_mel_targets, self.eval_token_targets, \
+			self.eval_inputs, self.eval_inputs_tone_stress, self.eval_speaker_labels, self.eval_language_labels, self.eval_input_lengths, self.eval_mel_targets, self.eval_token_targets, \
 				self.eval_linear_targets, self.eval_targets_lengths, self.eval_split_infos = eval_queue.dequeue()
 
 			self.eval_inputs.set_shape(self._placeholders[0].shape)
-			self.eval_speaker_labels.set_shape(self._placeholders[1].shape)
-			self.eval_language_labels.set_shape(self._placeholders[2].shape)
-			self.eval_input_lengths.set_shape(self._placeholders[3].shape)
-			self.eval_mel_targets.set_shape(self._placeholders[4].shape)
-			self.eval_token_targets.set_shape(self._placeholders[5].shape)
-			self.eval_linear_targets.set_shape(self._placeholders[6].shape)
-			self.eval_targets_lengths.set_shape(self._placeholders[7].shape)
-			self.eval_split_infos.set_shape(self._placeholders[8].shape)
+			self.eval_inputs_tone_stress.set_shape(self._placeholders[1].shape)
+			self.eval_speaker_labels.set_shape(self._placeholders[2].shape)
+			self.eval_language_labels.set_shape(self._placeholders[3].shape)
+			self.eval_input_lengths.set_shape(self._placeholders[4].shape)
+			self.eval_mel_targets.set_shape(self._placeholders[5].shape)
+			self.eval_token_targets.set_shape(self._placeholders[6].shape)
+			self.eval_linear_targets.set_shape(self._placeholders[7].shape)
+			self.eval_targets_lengths.set_shape(self._placeholders[8].shape)
+			self.eval_split_infos.set_shape(self._placeholders[9].shape)
 
 
 	def start_threads(self, session):
@@ -132,7 +137,7 @@ class Feeder:
 
 		text = meta[5]
 
-		input_data = np.asarray(text_to_sequence(text, self._cleaner_names), dtype=np.int32)
+		input_data = np.asarray(text_to_sequence_MIX_Phoneme_Version(text, self._cleaner_names), dtype=np.int32)
 		mel_target = np.load(os.path.join(self._mel_dir, meta[1]))
 		#Create parallel sequences containing zeros to represent a non finished sequence
 		token_target = np.asarray([0.] * (len(mel_target) - 1))
@@ -140,7 +145,7 @@ class Feeder:
 
 		speaker_label = np.asarray(int(meta[6]), dtype=np.int32)
 		language_label = np.asarray(int(meta[7]), dtype=np.int32)
-		return (input_data, speaker_label, language_label, mel_target, token_target, linear_target, len(mel_target))
+		return (input_data[0], input_data[1], speaker_label, language_label, mel_target, token_target, linear_target, len(mel_target))
 
 	def make_test_batches(self):
 		start = time.time()
@@ -196,7 +201,7 @@ class Feeder:
 		meta = self._train_meta[self._train_offset]
 		self._train_offset += 1
 		text = meta[5]
-		input_data = np.asarray(text_to_sequence(text, self._cleaner_names), dtype=np.int32)
+		input_data = np.asarray(text_to_sequence_MIX_Phoneme_Version(text, self._cleaner_names), dtype=np.int32)
 		mel_target = np.load(os.path.join(self._mel_dir, meta[1]))
 		#Create parallel sequences containing zeros to represent a non finished sequence
 		token_target = np.asarray([0.] * (len(mel_target) - 1))
@@ -204,13 +209,14 @@ class Feeder:
 
 		speaker_label = np.asarray(int(meta[6]), dtype=np.int32)
 		language_label = np.asarray(int(meta[7]), dtype=np.int32)
-		return (input_data, speaker_label, language_label, mel_target, token_target, linear_target, len(mel_target))
+		return (input_data[0], input_data[1], speaker_label, language_label, mel_target, token_target, linear_target, len(mel_target))
 
 	def _prepare_batch(self, batches, outputs_per_step):
 		assert 0 == len(batches) % self._hparams.tacotron_num_gpus
 		size_per_device = int(len(batches) / self._hparams.tacotron_num_gpus)
 		np.random.shuffle(batches)
 		inputs = None
+		inputs_tone_stress = None
 		speaker_labels=None
 		language_labels=None
 		mel_targets = None
@@ -225,27 +231,40 @@ class Feeder:
 
 		for i in range(self._hparams.tacotron_num_gpus):
 			batch = batches[size_per_device*i:size_per_device*(i+1)]
+
+
 			input_cur_device, input_max_len = self._prepare_inputs([x[0] for x in batch])
 			inputs = np.concatenate((inputs, input_cur_device), axis=1) if inputs is not None else input_cur_device
-			speaker_label_cur_device = np.asarray([x[1] for x in batch], dtype=np.int32)
+			
+			input_tone_stress_cur_device, input_tone_stress_max_len = self._prepare_inputs_tone_stress([x[1] for x in batch])
+			inputs_tone_stress = np.concatenate((inputs_tone_stress, input_tone_stress_cur_device), axis=1) if inputs_tone_stress is not None else input_tone_stress_cur_device
+			assert input_tone_stress_max_len == input_max_len
+			
+
+			speaker_label_cur_device = np.asarray([x[2] for x in batch], dtype=np.int32)
 			speaker_labels = np.concatenate((speaker_labels, speaker_label_cur_device),axis=0) if speaker_labels is not None else speaker_label_cur_device
-			language_label_cur_device = np.asarray([x[2] for x in batch], dtype=np.int32)
+			language_label_cur_device = np.asarray([x[3] for x in batch], dtype=np.int32)
 			language_labels = np.concatenate((language_labels, language_label_cur_device),axis=0) if language_labels is not None else language_label_cur_device
-			mel_target_cur_device, mel_target_max_len = self._prepare_targets([x[3] for x in batch], outputs_per_step)
+			mel_target_cur_device, mel_target_max_len = self._prepare_targets([x[4] for x in batch], outputs_per_step)
 			mel_targets = np.concatenate(( mel_targets, mel_target_cur_device), axis=1) if mel_targets is not None else mel_target_cur_device
 
 			#Pad sequences with 1 to infer that the sequence is done
-			token_target_cur_device, token_target_max_len = self._prepare_token_targets([x[4] for x in batch], outputs_per_step)
+			token_target_cur_device, token_target_max_len = self._prepare_token_targets([x[5] for x in batch], outputs_per_step)
 			token_targets = np.concatenate((token_targets, token_target_cur_device),axis=1) if token_targets is not None else token_target_cur_device
-			linear_targets_cur_device, linear_target_max_len = self._prepare_targets([x[5] for x in batch], outputs_per_step)
+			linear_targets_cur_device, linear_target_max_len = self._prepare_targets([x[6] for x in batch], outputs_per_step)
 			linear_targets = np.concatenate((linear_targets, linear_targets_cur_device), axis=1) if linear_targets is not None else linear_targets_cur_device
 			split_infos.append([input_max_len, mel_target_max_len, token_target_max_len, linear_target_max_len])
 		split_infos = np.asarray(split_infos, dtype=np.int32)
-		return (inputs, speaker_labels, language_labels, input_lengths, mel_targets, token_targets, linear_targets, targets_lengths, split_infos)
+		return (inputs, inputs_tone_stress, speaker_labels, language_labels, input_lengths, mel_targets, token_targets, linear_targets, targets_lengths, split_infos)
 
 	def _prepare_inputs(self, inputs):
 		max_len = max([len(x) for x in inputs])
 		return np.stack([self._pad_input(x, max_len) for x in inputs]), max_len
+
+	def _prepare_inputs_tone_stress(self, inputs_tone_stress):
+		max_len = max([len(x) for x in inputs_tone_stress])
+		pad_val = inputs_tone_stress[0][-1]
+		return np.stack([self._pad_input_tone_stress(x, max_len, pad_val) for x in inputs_tone_stress]), max_len
 
 	def _prepare_targets(self, targets, alignment):
 		max_len = max([len(t) for t in targets])
@@ -259,6 +278,9 @@ class Feeder:
 
 	def _pad_input(self, x, length):
 		return np.pad(x, (0, length - x.shape[0]), mode='constant', constant_values=self._pad)
+
+	def _pad_input_tone_stress(self, x, length, value):
+		return np.pad(x, (0, length - x.shape[0]), mode='constant', constant_values=value)
 
 	def _pad_target(self, t, length):
 		return np.pad(t, [(0, length - t.shape[0]), (0, 0)], mode='constant', constant_values=self._target_pad)
